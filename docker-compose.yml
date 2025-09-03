@@ -1,0 +1,124 @@
+
+services:
+  postgres: 
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  currency_db:  # Ваша БД для данных
+    build: 
+      context: .
+      dockerfile: dockerfile.db
+    environment:
+      POSTGRES_USER: ${CURRENCY_DB_USER}
+      POSTGRES_PASSWORD: ${CURRENCY_DB_PASSWORD}
+      POSTGRES_DB: ${CURRENCY_DB_NAME}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "jorgenrider"]
+      interval: 5s
+      retries: 5
+    volumes:
+      - currency_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:latest
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+
+  airflow-init:  
+    build: 
+      context: .
+      dockerfile: dockerfile.airflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    command: bash -c "airflow db init && airflow users create --username admin --password ${AIRFLOW_ADMIN_PSWD} --firstname Admin --lastname Admin --role Admin --email ${ADMIN_MAIL}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-webserver:
+    build: 
+      context: .
+      dockerfile: dockerfile.airflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-telegram>=3.0.0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    command: webserver
+    depends_on:
+      - postgres
+      - redis
+      - airflow-init  
+    restart: unless-stopped
+
+  airflow-scheduler:
+    build: 
+      context: .
+      dockerfile: dockerfile.airflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-telegram>=3.0.0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    command: scheduler
+    depends_on:
+      - postgres
+      - redis
+      - airflow-init  
+    restart: unless-stopped
+
+  airflow-worker:
+    build: 
+      context: .
+      dockerfile: dockerfile.airflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-telegram>=3.0.0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    command: celery worker
+    depends_on:
+      - postgres
+      - redis
+      - airflow-init  
+      - airflow-scheduler
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  currency_db_data:

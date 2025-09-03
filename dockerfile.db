@@ -1,0 +1,8 @@
+# Используем официальный образ PostgreSQL
+FROM postgres:15-alpine
+
+# Копируем SQL-скрипт для инициализации (если нужен)
+COPY init.sql /docker-entrypoint-initdb.d/
+
+# Открываем порт PostgreSQL
+EXPOSE 5432
