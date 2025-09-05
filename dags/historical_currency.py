@@ -11,9 +11,9 @@ def fetch_historical_rates():
     conn = hook.get_conn()
     cursor = conn.cursor()
     
-    # Определяем диапазон дат (последний год)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=20)
+    # Определяем диапазон
+    end_date = datetime(2025, 5, 28)
+    start_date = datetime(2010, 8, 10)
     
     current_date = start_date
     while current_date <= end_date:
